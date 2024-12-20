@@ -1,7 +1,7 @@
 module non_lin_ops #(
   parameter WIDTH=32
 ) (
-  input wire              clock, reset,
+  input wire              clock, reset, in_valid,
   input wire [2:0]        op,       // select which op in tb
   input wire [WIDTH-1:0]  qin,      // int32, input                                       exp, gelu, layer_norm, requant, softmax
                           qb,       // int32, fixed inference coefficients                exp, gelu, softmax
@@ -18,22 +18,24 @@ module non_lin_ops #(
                           out_bits, // int, number of out bits                            requant, softmax
                           Sreq,     // int32, requantization coefficient                  softmax
   input wire [7:0]        e,        // int8, requantization shifter                       requant
-  output reg [WIDTH-1:0]  qout      // int32, output, integer approximation of exp
+  output reg [WIDTH-1:0]  qout,     // int32, output, integer approximation of exp
+  output reg              out_valid
 );
 
   // TODO:
   // is varshift shift right always arithmetic shift right
   // the rest of the ops
 
-  
+
+
   /************************* internal signals *************************/
 
-  // ops
-  parameter exp=3'd0, gelu=3'd1, layer_norm=3'd2, requant=3'd3, softmax=3'd4;
+  // operations
+  localparam exp=3'd0, gelu=3'd1, layer_norm=3'd2, requant=3'd3, softmax=3'd4;
 
   reg [5:0] state, next; // support 44 cycles
 
-  parameter INTERNAL_WIDTH = WIDTH*2; // all internal signals are int64
+  localparam INTERNAL_WIDTH = WIDTH*2; // all internal signals are int64
 
   // sign-extend 64bits        
   wire signed [INTERNAL_WIDTH-1:0] qin_r; 
@@ -64,13 +66,13 @@ module non_lin_ops #(
   reg signed [INTERNAL_WIDTH-1:0] sqrt_i1;
 
   // outputs from functional units
-  reg signed [INTERNAL_WIDTH-1:0] add_o;
-  reg signed [INTERNAL_WIDTH-1:0] mult_o;
-  reg signed [INTERNAL_WIDTH-1:0] varshift_o;
-  reg signed [INTERNAL_WIDTH-1:0] usrmux_o;
-  reg signed [INTERNAL_WIDTH-1:0] redor_o;
-  reg signed [INTERNAL_WIDTH-1:0] div_o;
-  reg signed [INTERNAL_WIDTH-1:0] sqrt_o;
+  wire signed [INTERNAL_WIDTH-1:0] add_o;
+  wire signed [INTERNAL_WIDTH-1:0] mult_o;
+  wire signed [INTERNAL_WIDTH-1:0] varshift_o;
+  wire signed [INTERNAL_WIDTH-1:0] usrmux_o;
+  wire signed [INTERNAL_WIDTH-1:0] redor_o;
+  wire signed [INTERNAL_WIDTH-1:0] div_o;
+  wire signed [INTERNAL_WIDTH-1:0] sqrt_o;
 
   // registered outputs
   reg signed [INTERNAL_WIDTH-1:0] add_r;
@@ -82,16 +84,16 @@ module non_lin_ops #(
   reg signed [INTERNAL_WIDTH-1:0] sqrt_r;
 
   // register enable/disable
-  wire mult_en;
-  wire add_en;
-  wire varshift_en;
-  wire usrmux_en;
-  wire redor_en;
-  wire div_en;
-  wire sqrt_en;
+  reg mult_en;
+  reg add_en;
+  reg varshift_en;
+  reg usrmux_en;
+  reg redor_en;
+  reg div_en;
+  reg sqrt_en;
 
   // sum(), max() regs
-  reg [INTERNAL_WIDTH-1] rr0_reg, rr1_reg;
+  reg [INTERNAL_WIDTH-1:0] rr0_reg, rr1_reg;
 
   /************************* internal signals *************************/
 
@@ -100,21 +102,21 @@ module non_lin_ops #(
   /************************* architecture *************************/
 
   // sign-extend 64 bits           
-  assign qin_r      = {WIDTH{qin[WIDTH-1]},       qin}; 
-  assign qb_r       = {WIDTH{qb[WIDTH-1]},        qb};               
-  assign qc_r       = {WIDTH{qc[WIDTH-1]},        qc};              
-  assign qln2_r     = {WIDTH{qln2[WIDTH-1]},      qln2};                  
-  assign qln2_inv_r = {WIDTH{qln2_inv[WIDTH-1]},  qln2_inv};                              
-  assign fp_bits_r  = {WIDTH{fp_bits[WIDTH-1]},   fp_bits};                     
-  assign q1_r       = {WIDTH{q1[WIDTH-1]},        q1};              
-  assign shift_r    = {WIDTH{shift[WIDTH-1]},     shift};                 
-  assign bias_r     = {WIDTH{bias[WIDTH-1]},      bias};                  
-  assign n_inv_r    = {WIDTH{n_inv[WIDTH-1]},     n_inv};                 
-  assign max_bits_r = {WIDTH{max_bits[WIDTH-1]},  max_bits};                            
-  assign m_r        = {WIDTH{m[WIDTH-1]},         m};         
-  assign out_bits_r = {WIDTH{out_bits[WIDTH-1]},  out_bits};                          
-  assign Sreq_r     = {WIDTH{Sreq[WIDTH-1]},      Sreq};                  
-  assign e_r        = {24{e[24-1]},               e};         
+  assign qin_r      = in_valid ? {{WIDTH{qin     [WIDTH-1]}},       qin} : 0; 
+  assign qb_r       = in_valid ? {{WIDTH{qb      [WIDTH-1]}},        qb} : 0;               
+  assign qc_r       = in_valid ? {{WIDTH{qc      [WIDTH-1]}},        qc} : 0;              
+  assign qln2_r     = in_valid ? {{WIDTH{qln2    [WIDTH-1]}},      qln2} : 0;                  
+  assign qln2_inv_r = in_valid ? {{WIDTH{qln2_inv[WIDTH-1]}},  qln2_inv} : 0;                              
+  assign fp_bits_r  = in_valid ? {{WIDTH{fp_bits [WIDTH-1]}},   fp_bits} : 0;                     
+  assign q1_r       = in_valid ? {{WIDTH{q1      [WIDTH-1]}},        q1} : 0;              
+  assign shift_r    = in_valid ? {{WIDTH{shift   [WIDTH-1]}},     shift} : 0;                 
+  assign bias_r     = in_valid ? {{WIDTH{bias    [WIDTH-1]}},      bias} : 0;                  
+  assign n_inv_r    = in_valid ? {{WIDTH{n_inv   [WIDTH-1]}},     n_inv} : 0;                 
+  assign max_bits_r = in_valid ? {{WIDTH{max_bits[WIDTH-1]}},  max_bits} : 0;                            
+  assign m_r        = in_valid ? {{WIDTH{m       [WIDTH-1]}},         m} : 0;         
+  assign out_bits_r = in_valid ? {{WIDTH{out_bits[WIDTH-1]}},  out_bits} : 0;                          
+  assign Sreq_r     = in_valid ? {{WIDTH{Sreq    [WIDTH-1]}},      Sreq} : 0;                  
+  assign e_r        = in_valid ? {{24   {e       [24-1]}},            e} : 0;         
 
   // state transition logic
   always @(*) begin
@@ -129,19 +131,22 @@ module non_lin_ops #(
           6'd5:    next = 6'd6;
           6'd6:    next = 6'd7;
           6'd7:    next = 6'd8;
-          6'd8:    next = 6'd0; // for output, if expect back to back operations, need modify
+          6'd8:    next = 6'd9;
+          6'd9:    next = 6'd1;
           default: next = 6'd0;
         endcase
-      gelu:
-
+        
       layer_norm: 
-      
+        next = 6'd0;
+
       requant: 
-      
+        next = 6'd0;      
+
       softmax: 
-      
+        next = 6'd0;      
+
       default: 
-      
+        next = 6'd0;
     endcase
   end
 
@@ -152,18 +157,35 @@ module non_lin_ops #(
   // output logic
   always @(*) begin
     case (op)
-      exp:
-        qout = (state == 6'd8) ? varshift_r : 0;
-      gelu: 
-      
-      layer_norm: 
-      
-      requant: 
-      
-      softmax: 
-      
-      default: 
+      exp: begin
+        qout = (state == 6'd9) ? varshift_r : 0;
+        out_valid = state == 6'd9;
+      end
+
+      gelu: begin
         qout = 0;
+        out_valid = 0;
+      end   
+
+      layer_norm: begin
+        qout = 0;
+        out_valid = 0;
+      end   
+
+      requant: begin
+        qout = 0;
+        out_valid = 0;
+      end   
+
+      softmax: begin
+        qout = 0;
+        out_valid = 0;
+      end   
+
+      default: begin
+        qout = 0;
+        out_valid = 0;
+      end
     endcase
   end
   
@@ -172,17 +194,17 @@ module non_lin_ops #(
     case (op)
       exp:
         case (state)
-          6'd3: begin
+          6'd4: begin
             add_en = 1;
             add_i1 = qin_r;
             add_i2 = mult_r;
           end
-          6'd4: begin
+          6'd5: begin
             add_en = 1;
             add_i1 = qb_r;
             add_i2 = add_r;
           end
-          6'd6: begin
+          6'd7: begin
             add_en = 1;
             add_i1 = qc_r;
             add_i2 = mult_r;
@@ -193,14 +215,31 @@ module non_lin_ops #(
             add_i2 = 0;
           end
         endcase
-      gelu:
 
-      layer_norm: 
-      
-      requant: 
-      
-      softmax: 
-      
+      gelu: begin
+        add_en = 0;
+        add_i1 = 0;
+        add_i2 = 0;
+      end
+
+      layer_norm: begin
+        add_en = 0;
+        add_i1 = 0;
+        add_i2 = 0;
+      end   
+
+      requant: begin
+        add_en = 0;
+        add_i1 = 0;
+        add_i2 = 0;
+      end    
+
+      softmax: begin
+        add_en = 0;
+        add_i1 = 0;
+        add_i2 = 0;
+      end   
+
       default: begin
         add_en = 0;
         add_i1 = 0;
@@ -214,17 +253,17 @@ module non_lin_ops #(
     case (op)
       exp:
         case (state)
-          6'd0: begin
+          6'd1: begin
             mult_en = 1;
             mult_i1 = qin_r;
             mult_i2 = qln2_inv_r;
           end
-          6'd2: begin
+          6'd3: begin
             mult_en = 1;
             mult_i1 = qln2_r;
             mult_i2 = varshift_r;
           end
-          6'd5: begin
+          6'd6: begin
             mult_en = 1;
             mult_i1 = add_r;
             mult_i2 = usrmux_r;
@@ -235,14 +274,31 @@ module non_lin_ops #(
             mult_i2 = 0;
           end
         endcase
-      gelu:
 
-      layer_norm: 
-      
-      requant: 
-      
-      softmax: 
-      
+      gelu: begin
+        mult_en = 0;
+        mult_i1 = 0;
+        mult_i2 = 0;
+      end
+
+      layer_norm: begin
+        mult_en = 0;
+        mult_i1 = 0;
+        mult_i2 = 0;
+      end   
+
+      requant: begin
+        mult_en = 0;
+        mult_i1 = 0;
+        mult_i2 = 0;
+      end
+
+      softmax: begin
+        mult_en = 0;
+        mult_i1 = 0;
+        mult_i2 = 0;
+      end 
+
       default: begin
         mult_en = 0;
         mult_i1 = 0;
@@ -256,13 +312,13 @@ module non_lin_ops #(
     case (op)
       exp:
         case (state)
-          6'd1: begin
+          6'd2: begin
             varshift_en = 1;
             varshift_lr = 1;
             varshift_i1 = mult_r;
-            varshift_i2 = INTERNAL_WIDTH'd30; // sus
+            varshift_i2 = fp_bits_r;
           end
-          6'd7: begin
+          6'd8: begin
             varshift_en = 1;
             varshift_lr = 1;
             varshift_i1 = add_r;
@@ -275,13 +331,34 @@ module non_lin_ops #(
             varshift_i2 = 0;
           end
         endcase
-      gelu:
 
-      layer_norm: 
+      gelu: begin
+        varshift_en = 0;
+        varshift_lr = 0;
+        varshift_i1 = 0;
+        varshift_i2 = 0;
+      end
+
+      layer_norm: begin
+        varshift_en = 0;
+        varshift_lr = 0;
+        varshift_i1 = 0;
+        varshift_i2 = 0;
+      end
       
-      requant: 
+      requant: begin
+        varshift_en = 0;
+        varshift_lr = 0;
+        varshift_i1 = 0;
+        varshift_i2 = 0;
+      end
       
-      softmax: 
+      softmax: begin
+        varshift_en = 0;
+        varshift_lr = 0;
+        varshift_i1 = 0;
+        varshift_i2 = 0;
+      end
       
       default: begin
         varshift_en = 0;
@@ -296,17 +373,48 @@ module non_lin_ops #(
   always @(*) begin
     case (op)
       exp:
-        usrmux_en  = 1;
-        usrmux_sel = 0;
-        usrmux_i1  = add_r;
-        usrmux_i2  = 0;
-      gelu:
+        case (state)
+          6'd5: begin
+            usrmux_en  = 1;
+            usrmux_sel = 0;
+            usrmux_i1  = add_r;
+            usrmux_i2  = 0;
+          end
+          default: begin
+            usrmux_en  = 0;
+            usrmux_sel = 0;
+            usrmux_i1  = 0;
+            usrmux_i2  = 0;
+          end
+        endcase
 
-      layer_norm: 
+      gelu: begin
+        usrmux_en  = 0;
+        usrmux_sel = 0;
+        usrmux_i1  = 0;
+        usrmux_i2  = 0;
+      end
+
+      layer_norm: begin
+        usrmux_en  = 0;
+        usrmux_sel = 0;
+        usrmux_i1  = 0;
+        usrmux_i2  = 0;
+      end 
       
-      requant: 
+      requant: begin
+        usrmux_en  = 0;
+        usrmux_sel = 0;
+        usrmux_i1  = 0;
+        usrmux_i2  = 0;
+      end
       
-      softmax: 
+      softmax: begin
+        usrmux_en  = 0;
+        usrmux_sel = 0;
+        usrmux_i1  = 0;
+        usrmux_i2  = 0;
+      end
       
       default: begin
         usrmux_en  = 0;
@@ -324,7 +432,7 @@ module non_lin_ops #(
   add_instance (
     .add_i1(add_i1),
     .add_i2(add_i2),
-    .add_o(add_o),
+    .add_o(add_o)
   );
   
   mult #(
@@ -333,7 +441,7 @@ module non_lin_ops #(
   mult_instance (
     .mult_i1(mult_i1),
     .mult_i2(mult_i2),
-    .mult_o(mult_o),
+    .mult_o(mult_o)
   );
 
   varshift #(
@@ -343,17 +451,17 @@ module non_lin_ops #(
     .varshift_lr(varshift_lr),
     .varshift_i1(varshift_i1),
     .varshift_i2(varshift_i2),
-    .varshift_o(varshift_o),
+    .varshift_o(varshift_o)
   );
 
   usrmux #(
     .WIDTH(INTERNAL_WIDTH)
   )
   usrmux_instance (
-    .usrmux_lr(usrmux_sel),
+    .usrmux_sel(usrmux_sel),
     .usrmux_i1(usrmux_i1),
     .usrmux_i2(usrmux_i2),
-    .usrmux_o(usrmux_o),
+    .usrmux_o(usrmux_o)
   );
 
   // functional units registers

@@ -12,7 +12,7 @@ module mult #(
   /************************* architecture *************************/
   
   // combinational logic
-  assign mult_o = mult_i1 + mult_i2;
+  assign mult_o = mult_i1 * mult_i2;
       
   /************************* architecture *************************/
   
