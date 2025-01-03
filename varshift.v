@@ -7,7 +7,6 @@ module varshift #(
 );
 
   /************************* internal signals *************************/
-  parameter left=0, right=1;
   /************************* internal signals *************************/
 
 
@@ -15,7 +14,7 @@ module varshift #(
   /************************* architecture *************************/
 
   // combinational logic
-  assign varshift_o = ~varshift_lr ? (varshift_i1 << varshift_i2) : (varshift_i1 >>> varshift_i2); // always asr?
+  assign varshift_o = ~varshift_lr ? ($signed(varshift_i1) << $signed(varshift_i2)) : ($signed(varshift_i1) >>> $signed(varshift_i2)); // always asr?
 
   /************************* architecture *************************/
   
