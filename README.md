@@ -18,3 +18,6 @@ Minimize non-linear operations' utilization on FPGA to maximize resources availa
 | ----------- | ----------- | ----------- |
 | WNS: 0.885ns | WHS: 0.271ns | WPWS: 4.500ns |
 | TNS: 0.000ns | THS: 0.000ns | TPWS: 0.000ns |
+
+## Notes:
+div_hls and sqrt_hls aren't included in the repo
